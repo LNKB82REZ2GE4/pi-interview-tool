@@ -13,6 +13,7 @@ const FILES_TO_COPY = [
   "schema.ts", 
   "server.ts",
   "settings.ts",
+  "package.json",
 ];
 
 const DIRS_TO_COPY = ["form"];
