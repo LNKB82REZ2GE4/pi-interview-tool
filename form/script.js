@@ -5,7 +5,6 @@
   const sessionId = data.sessionId || "";
   const cwd = data.cwd || "";
   const gitBranch = data.gitBranch || "";
-  const startedAt = data.startedAt || Date.now();
   const timeout = typeof data.timeout === "number" ? data.timeout : 0;
 
   const titleEl = document.getElementById("form-title");
@@ -1822,7 +1821,6 @@
   function collectResponses() {
     return questions.map((question) => {
       const resp = { id: question.id, value: getQuestionValue(question) };
-      if (question.type === "image") resp.type = "paths";
       if (question.type !== "image") {
         const attachPaths = attachments.getPaths(question.id);
         if (attachPaths.length > 0) resp.attachments = attachPaths;

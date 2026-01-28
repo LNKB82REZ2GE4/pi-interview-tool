@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-01-27
+
+### Fixed
+- Success overlay now centered in viewport when scrolled down (changed `position: absolute` to `position: fixed`)
+
+### Changed
+- Removed unused `startedAt` variable from script.js
+- Removed unused `resp.type` property assignment in `collectResponses()`
+
 ## [0.4.2] - 2026-01-26
 
 ### Fixed
