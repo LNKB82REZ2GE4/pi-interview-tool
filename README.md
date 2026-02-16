@@ -21,7 +21,10 @@ Restart pi to load the extension.
 
 ## Features
 
-- **Question Types**: Single-select, multi-select, text input, and image upload
+- **Question Types**: Single-select, multi-select, text input, image upload, and info panels
+- **Rich Media**: Embed images, Chart.js charts, Mermaid diagrams, tables, and HTML in questions
+- **Pre-selection**: Recommended options show a "Recommended" badge and are pre-checked on load
+- **Conviction & Weight**: Control recommendation strength (`conviction`) and visual prominence (`weight`)
 - **"Other" Option**: Single/multi select questions support custom text input
 - **Per-Question Attachments**: Attach images to any question via button, paste, or drag & drop
 - **Keyboard Navigation**: Full keyboard support with arrow keys, Tab, Enter
@@ -79,14 +82,22 @@ await interview({
 ```json
 {
   "title": "Project Setup",
-  "description": "Optional description text",
+  "description": "Review my suggestions and adjust as needed.",
   "questions": [
+    {
+      "id": "context",
+      "type": "info",
+      "question": "Architecture context",
+      "context": "This project needs SSR and edge deployment support."
+    },
     {
       "id": "framework",
       "type": "single",
       "question": "Which framework?",
       "options": ["React", "Vue", "Svelte"],
-      "recommended": "React"
+      "recommended": "React",
+      "conviction": "strong",
+      "weight": "critical"
     },
     {
       "id": "features",
@@ -95,6 +106,14 @@ await interview({
       "context": "Select all that apply",
       "options": ["Auth", "Database", "API"],
       "recommended": ["Auth", "Database"]
+    },
+    {
+      "id": "indent",
+      "type": "single",
+      "question": "Indent style?",
+      "options": ["Tabs", "Spaces (2)", "Spaces (4)"],
+      "recommended": "Spaces (2)",
+      "weight": "minor"
     },
     {
       "id": "notes",
@@ -115,12 +134,15 @@ await interview({
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string | Unique identifier |
-| `type` | string | `single`, `multi`, `text`, or `image` |
+| `type` | string | `single`, `multi`, `text`, `image`, or `info` |
 | `question` | string | Question text |
 | `options` | string[] or object[] | Choices (required for single/multi). Can be strings or `{ label, code? }` objects |
-| `recommended` | string or string[] | Highlighted option(s) with `*` indicator |
+| `recommended` | string or string[] | Shows "Recommended" badge and pre-selects option(s) |
+| `conviction` | string | `"strong"` or `"slight"`. Slight opts out of pre-selection. Requires `recommended` |
+| `weight` | string | `"critical"` (prominent card) or `"minor"` (compact card) |
 | `context` | string | Help text shown below question |
 | `codeBlock` | object | Code block displayed below question text |
+| `media` | object or object[] | Media content: image, chart, mermaid, table, or html |
 
 ### Code Blocks
 
@@ -182,6 +204,64 @@ Questions and options can include code blocks for displaying code snippets, diff
 
 Line numbers are shown when `file` or `lines` is specified. Diff syntax (`+`/`-` lines) is automatically styled when `lang` is "diff".
 
+### Info Panels
+
+Use `type: "info"` for non-interactive context panels. They display a title, context text, and optional media but have no input — they're skipped during keyboard navigation and excluded from responses.
+
+```json
+{
+  "id": "overview",
+  "type": "info",
+  "question": "Architecture Overview",
+  "context": "The system uses a microservices architecture with three main services.",
+  "media": { "type": "mermaid", "mermaid": "graph LR\n  A[API] --> B[Auth]\n  A --> C[Data]" }
+}
+```
+
+### Media Blocks
+
+Questions can embed media via the `media` field (single object or array). Supported types:
+
+| Type | Fields | Description |
+|------|--------|-------------|
+| `image` | `src`, `alt?`, `caption?` | Image (local path, URL, or data URI) |
+| `table` | `table: { headers, rows, highlights? }`, `caption?` | Data table with optional row highlighting |
+| `chart` | `chart: { type, data, options? }`, `caption?` | Chart.js chart (bar, line, pie, etc.) |
+| `mermaid` | `mermaid: "graph LR\n..."`, `caption?` | Mermaid diagram |
+| `html` | `html: "<div>...</div>"`, `caption?` | Raw HTML content |
+
+All media types support `position`: `"above"` (default), `"below"`, or `"side"` (two-column layout).
+
+```json
+{
+  "id": "db-choice",
+  "type": "single",
+  "question": "Which database?",
+  "media": {
+    "type": "table",
+    "table": {
+      "headers": ["Database", "Latency", "Cost"],
+      "rows": [["PostgreSQL", "~5ms", "$50/mo"], ["DynamoDB", "~2ms", "$80/mo"]],
+      "highlights": [0]
+    },
+    "caption": "Benchmark results from staging"
+  },
+  "options": ["PostgreSQL", "DynamoDB"],
+  "recommended": "PostgreSQL"
+}
+```
+
+### Conviction & Weight
+
+**Conviction** controls how strongly a recommendation is presented:
+- Omitted (default): shows "Recommended" badge, pre-selects the option
+- `"strong"`: same as default (use when very confident)
+- `"slight"`: shows "Recommended" badge but does NOT pre-select (use when unsure)
+
+**Weight** controls visual prominence:
+- `"critical"`: thick accent border, tinted background — for decisions that matter most
+- `"minor"`: compact card with smaller text and padding — for low-stakes preferences
+
 ## Keyboard Shortcuts
 
 | Key | Action |
@@ -240,7 +320,7 @@ The interview form supports light/dark themes with automatic OS detection and us
 | Theme | Description |
 |-------|-------------|
 | `default` | Monospace, IDE-inspired aesthetic |
-| `tufte` | Serif fonts (Cormorant Garamond), book-like feel |
+| `tufte` | Serif fonts (Instrument Serif), book-like feel |
 
 ### Theme Modes
 

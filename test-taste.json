@@ -1,0 +1,72 @@
+{
+  "title": "Taste Enhancements Test",
+  "description": "Review my suggestions below and adjust as needed.",
+  "questions": [
+    {
+      "id": "critical-strong",
+      "type": "single",
+      "question": "Which framework should we use?",
+      "context": "This is the most important architectural decision. It affects everything downstream.",
+      "options": ["React", "Vue", "Svelte", "Angular"],
+      "recommended": "React",
+      "conviction": "strong",
+      "weight": "critical"
+    },
+    {
+      "id": "minor-default",
+      "type": "single",
+      "question": "Indent style?",
+      "context": "Minor formatting preference, easy to change later.",
+      "options": ["Tabs", "Spaces (2)", "Spaces (4)"],
+      "recommended": "Spaces (2)",
+      "weight": "minor"
+    },
+    {
+      "id": "slight-conviction",
+      "type": "single",
+      "question": "State management approach?",
+      "context": "I lean toward Zustand but the codebase could go either way.",
+      "options": ["Zustand", "Jotai", "Redux Toolkit", "React Context"],
+      "recommended": "Zustand",
+      "conviction": "slight"
+    },
+    {
+      "id": "default-recommended",
+      "type": "single",
+      "question": "Testing framework?",
+      "context": "Vitest has better DX with Vite projects.",
+      "options": ["Vitest", "Jest", "Playwright Test"],
+      "recommended": "Vitest"
+    },
+    {
+      "id": "baseline",
+      "type": "single",
+      "question": "Deployment target?",
+      "options": ["Vercel", "Cloudflare Pages", "AWS", "Self-hosted"]
+    },
+    {
+      "id": "minor-info",
+      "type": "info",
+      "question": "A note on tooling",
+      "context": "The following questions cover optional tooling. None of these are blocking decisions.",
+      "weight": "minor"
+    },
+    {
+      "id": "critical-info",
+      "type": "info",
+      "question": "Important: Database choice is final",
+      "context": "Once we pick a database, migration is expensive. Consider this carefully.",
+      "weight": "critical"
+    },
+    {
+      "id": "critical-strong-multi",
+      "type": "multi",
+      "question": "Which linters and formatters?",
+      "context": "These three work well together and catch different classes of issues.",
+      "options": ["ESLint", "Prettier", "Biome", "oxlint", "dprint"],
+      "recommended": ["ESLint", "Prettier"],
+      "conviction": "strong",
+      "weight": "critical"
+    }
+  ]
+}

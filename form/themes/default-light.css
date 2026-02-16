@@ -21,4 +21,11 @@
   --error-bg: rgba(175, 95, 95, 0.12);
   --focus-ring: rgba(95, 135, 175, 0.2);
   --overlay-bg: rgba(255, 255, 255, 0.95);
+
+  --q-color-1: #4a7a73;
+  --q-color-2: #059669;
+  --q-color-3: #d97706;
+  --q-color-4: #db2777;
+  --q-color-5: #0891b2;
+  --q-color-6: #7c3aed;
 }

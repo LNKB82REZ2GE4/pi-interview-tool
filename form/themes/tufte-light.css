@@ -22,8 +22,14 @@
   --focus-ring: rgba(125, 104, 80, 0.2);
   --overlay-bg: rgba(251, 250, 247, 0.95);
 
-  --font-body: "Cormorant Garamond", Cormorant, "Crimson Pro", "Libre Baskerville", Georgia, serif;
-  --font-ui: "Cormorant Garamond", Cormorant, "Crimson Pro", "Libre Baskerville", Georgia, serif;
-  --font-mono: "IBM Plex Mono", "JetBrains Mono", "SF Mono", Consolas, monospace;
-  --font-size-base: 15px;
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-body: 'Instrument Serif', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+  --q-color-1: #7d6850;
+  --q-color-2: #5a7a4a;
+  --q-color-3: #a07030;
+  --q-color-4: #a05050;
+  --q-color-5: #4a7a8a;
+  --q-color-6: #7a5a8a;
 }

@@ -498,6 +498,155 @@
     return container;
   }
 
+  function renderMediaImage(media) {
+    const figure = document.createElement("figure");
+    figure.className = "media-block media-image";
+
+    const img = document.createElement("img");
+    const isUrl = media.src.startsWith("http://") || media.src.startsWith("https://") || media.src.startsWith("data:");
+    img.src = isUrl ? media.src : `/media?path=${encodeURIComponent(media.src)}&session=${encodeURIComponent(sessionToken)}`;
+    img.alt = media.alt || "";
+    img.loading = "lazy";
+
+    figure.appendChild(img);
+    if (media.caption) {
+      const capEl = document.createElement("div");
+      capEl.className = "media-caption";
+      capEl.textContent = media.caption;
+      figure.appendChild(capEl);
+    }
+    return figure;
+  }
+
+  function renderMediaTable(media) {
+    const t = media.table;
+    const wrapper = document.createElement("div");
+    wrapper.className = "media-block media-table";
+
+    const tableScroll = document.createElement("div");
+    tableScroll.className = "media-table-scroll";
+
+    const table = document.createElement("table");
+    table.className = "data-table";
+
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    t.headers.forEach(h => {
+      const th = document.createElement("th");
+      th.textContent = h;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    const highlights = new Set(t.highlights || []);
+    t.rows.forEach((row, i) => {
+      const tr = document.createElement("tr");
+      if (highlights.has(i)) tr.classList.add("highlighted-row");
+      row.forEach(cell => {
+        const td = document.createElement("td");
+        td.innerHTML = renderLightMarkdown(cell);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    tableScroll.appendChild(table);
+    wrapper.appendChild(tableScroll);
+
+    if (media.caption) {
+      const capEl = document.createElement("div");
+      capEl.className = "media-caption";
+      capEl.textContent = media.caption;
+      wrapper.appendChild(capEl);
+    }
+    return wrapper;
+  }
+
+  function renderMediaChart(media) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "media-block media-chart";
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 600;
+    canvas.height = 300;
+    wrapper.appendChild(canvas);
+
+    if (media.caption) {
+      const capEl = document.createElement("div");
+      capEl.className = "media-caption";
+      capEl.textContent = media.caption;
+      wrapper.appendChild(capEl);
+    }
+
+    requestAnimationFrame(() => {
+      if (typeof Chart === "undefined") return;
+      const chartConfig = JSON.parse(JSON.stringify(media.chart));
+      chartConfig.options = chartConfig.options || {};
+      chartConfig.options.responsive = true;
+      chartConfig.options.maintainAspectRatio = true;
+      new Chart(canvas, chartConfig);
+    });
+
+    return wrapper;
+  }
+
+  function renderMediaMermaid(media) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "media-block media-mermaid";
+
+    const pre = document.createElement("pre");
+    pre.className = "mermaid";
+    pre.textContent = media.mermaid;
+    wrapper.appendChild(pre);
+
+    if (media.caption) {
+      const capEl = document.createElement("div");
+      capEl.className = "media-caption";
+      capEl.textContent = media.caption;
+      wrapper.appendChild(capEl);
+    }
+    return wrapper;
+  }
+
+  function renderMediaHtml(media) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "media-block media-html";
+    wrapper.innerHTML = media.html;
+    wrapper.querySelectorAll("script").forEach(s => s.remove());
+
+    if (media.caption) {
+      const capEl = document.createElement("div");
+      capEl.className = "media-caption";
+      capEl.textContent = media.caption;
+      wrapper.appendChild(capEl);
+    }
+    return wrapper;
+  }
+
+  function renderMediaBlock(media) {
+    if (!media || !media.type) return null;
+    if (media.maxHeight) {
+      const el = renderMediaBlockByType(media);
+      if (el) el.style.maxHeight = media.maxHeight;
+      return el;
+    }
+    return renderMediaBlockByType(media);
+  }
+
+  function renderMediaBlockByType(media) {
+    switch (media.type) {
+      case "image": return renderMediaImage(media);
+      case "table": return renderMediaTable(media);
+      case "chart": return renderMediaChart(media);
+      case "mermaid": return renderMediaMermaid(media);
+      case "html": return renderMediaHtml(media);
+      default: return null;
+    }
+  }
+
   function isPrintableKey(event) {
     if (event.metaKey || event.ctrlKey || event.altKey) return false;
     return event.key.length === 1;
@@ -974,7 +1123,10 @@
   }
 
   function focusQuestion(index, fromDirection = 'next') {
-    if (index < 0 || index >= nav.cards.length) return;
+    while (index >= 0 && index < nav.cards.length && nav.cards[index].classList.contains('info-panel')) {
+      index += fromDirection === 'prev' ? -1 : 1;
+    }
+    if (index < 0 || index >= nav.cards.length) return false;
     
     deactivateSubmitArea();
     
@@ -1005,12 +1157,14 @@
         textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
       }
     }
-
+    return true;
   }
 
   function nextQuestion() {
     if (nav.questionIndex < nav.cards.length - 1) {
-      focusQuestion(nav.questionIndex + 1, 'next');
+      if (!focusQuestion(nav.questionIndex + 1, 'next')) {
+        activateSubmitArea();
+      }
     } else {
       activateSubmitArea();
     }
@@ -1218,21 +1372,43 @@
     document.addEventListener('keydown', handleQuestionKeydown);
     
     if (nav.cards.length > 0) {
-      setTimeout(() => focusQuestion(0), 100);
+      setTimeout(() => {
+        if (!focusQuestion(0)) {
+          activateSubmitArea();
+        }
+      }, 100);
     }
   }
 
-  function createQuestionCard(question, index) {
+  function createQuestionCard(question, index, badgeNumber) {
     const card = document.createElement("section");
     card.className = "question-card";
     card.setAttribute("role", "listitem");
     card.dataset.questionId = question.id;
 
+    const colors = ['--q-color-1', '--q-color-2', '--q-color-3', '--q-color-4', '--q-color-5', '--q-color-6'];
+    card.style.setProperty('--card-accent', `var(${colors[index % colors.length]})`);
+    card.style.setProperty('--i', String(index));
+
+    if (question.weight === "minor") card.classList.add("weight-minor");
+    if (question.weight === "critical") card.classList.add("weight-critical");
+
+    const header = document.createElement('div');
+    header.className = 'question-header';
+
     const title = document.createElement("h2");
     title.className = "question-title";
     title.id = `q-${question.id}-title`;
-    title.innerHTML = `${index + 1}. ${renderLightMarkdown(question.question)}`;
-    card.appendChild(title);
+    title.innerHTML = renderLightMarkdown(question.question);
+
+    if (badgeNumber !== null) {
+      const badge = document.createElement('span');
+      badge.className = 'question-badge';
+      badge.textContent = String(badgeNumber);
+      header.appendChild(badge);
+    }
+    header.appendChild(title);
+    card.appendChild(header);
 
     if (question.context) {
       const context = document.createElement("p");
@@ -1249,6 +1425,32 @@
       }
     }
 
+    let belowMedia = [];
+    let sideMedia = [];
+    if (question.media) {
+      const mediaList = Array.isArray(question.media) ? question.media : [question.media];
+      const aboveMedia = mediaList.filter(m => !m.position || m.position === "above");
+      belowMedia = mediaList.filter(m => m.position === "below");
+      sideMedia = mediaList.filter(m => m.position === "side");
+
+      aboveMedia.forEach(m => {
+        const el = renderMediaBlock(m);
+        if (el) card.appendChild(el);
+      });
+    }
+
+    if (question.type === "info") {
+      card.classList.add("info-panel");
+      belowMedia.forEach(m => {
+        const el = renderMediaBlock(m);
+        if (el) card.appendChild(el);
+      });
+      if (sideMedia.length > 0) {
+        applySideLayout(card, sideMedia);
+      }
+      return card;
+    }
+
     if (question.type === "single" || question.type === "multi") {
       const list = document.createElement("div");
       list.className = "option-list";
@@ -1261,6 +1463,7 @@
         : recommended
           ? [recommended]
           : [];
+      const shouldPreselect = recommendedList.length > 0 && question.conviction !== "slight";
 
       question.options.forEach((option, optionIndex) => {
         const optionLabel = getOptionLabel(option);
@@ -1289,10 +1492,14 @@
         text.textContent = optionLabel;
         
         if (recommendedList.includes(optionLabel)) {
-          const star = document.createElement("span");
-          star.className = "recommended-star";
-          star.textContent = "*";
-          text.appendChild(star);
+          const pill = document.createElement("span");
+          pill.className = "recommended-pill";
+          pill.textContent = "Recommended";
+          text.appendChild(pill);
+
+          if (shouldPreselect) {
+            input.checked = true;
+          }
         }
 
         label.appendChild(input);
@@ -1307,6 +1514,7 @@
 
         list.appendChild(label);
       });
+
 
       const otherLabel = document.createElement("label");
       otherLabel.className = "option-item option-other";
@@ -1614,7 +1822,38 @@
       }
     });
 
+    belowMedia.forEach(m => {
+      const el = renderMediaBlock(m);
+      if (el) card.appendChild(el);
+    });
+
+    if (sideMedia.length > 0) {
+      applySideLayout(card, sideMedia);
+    }
+
     return card;
+  }
+
+  function applySideLayout(card, sideMedia) {
+    const grid = document.createElement("div");
+    grid.className = "question-side-layout";
+
+    const mediaCol = document.createElement("div");
+    mediaCol.className = "question-side-media";
+    sideMedia.forEach(m => {
+      const el = renderMediaBlock(m);
+      if (el) mediaCol.appendChild(el);
+    });
+
+    const contentCol = document.createElement("div");
+    contentCol.className = "question-side-content";
+    while (card.firstChild) {
+      contentCol.appendChild(card.firstChild);
+    }
+
+    grid.appendChild(mediaCol);
+    grid.appendChild(contentCol);
+    card.appendChild(grid);
   }
 
   function loadImage(file) {
@@ -1748,7 +1987,13 @@
     if (nav.inSubmitArea || session.expired) return;
     const clipboard = event.clipboardData;
     if (!clipboard) return;
-    
+
+    const active = document.activeElement;
+    const isTextInput = active && (active.tagName === "TEXTAREA" || (active.tagName === "INPUT" && active.type === "text"));
+    if (isTextInput && clipboard.getData("text/plain")) {
+      return;
+    }
+
     const context = resolveQuestionContext(event.target);
     if (!context) return;
 
@@ -1819,22 +2064,23 @@
   }
 
   function collectResponses() {
-    return questions.map((question) => {
-      const resp = { id: question.id, value: getQuestionValue(question) };
-      if (question.type !== "image") {
-        const attachPaths = attachments.getPaths(question.id);
-        if (attachPaths.length > 0) resp.attachments = attachPaths;
-      }
-      return resp;
-    });
+    return questions
+      .filter((question) => question.type !== "info")
+      .map((question) => {
+        const resp = { id: question.id, value: getQuestionValue(question) };
+        if (question.type !== "image") {
+          const attachPaths = attachments.getPaths(question.id);
+          if (attachPaths.length > 0) resp.attachments = attachPaths;
+        }
+        return resp;
+      });
   }
 
   function collectPersistedData() {
     const data = {};
     questions.forEach((question) => {
-      if (question.type !== "image") {
-        data[question.id] = getQuestionValue(question);
-      }
+      if (question.type === "info" || question.type === "image") return;
+      data[question.id] = getQuestionValue(question);
     });
     return data;
   }
@@ -1924,18 +2170,27 @@
 
   function loadProgress() {
     if (!session.storageKey) return;
+    let loaded = false;
     try {
       const saved = localStorage.getItem(session.storageKey);
       if (saved) {
         populateForm(JSON.parse(saved));
         questions.forEach((q) => {
-          if (q.type === "multi") {
-            updateDoneState(q.id);
-          }
+          if (q.type === "multi") updateDoneState(q.id);
         });
+        loaded = true;
       }
     } catch (_err) {
       // ignore storage errors
+    }
+    if (!loaded) {
+      questions.forEach(q => {
+        if (q.type !== "multi") return;
+        const recs = Array.isArray(q.recommended) ? q.recommended : q.recommended ? [q.recommended] : [];
+        if (recs.length > 0 && q.conviction !== "slight") {
+          updateDoneState(q.id);
+        }
+      });
     }
   }
 
@@ -2205,8 +2460,11 @@
     const shortId = sessionId.slice(0, 8);
     document.title = `${projectName}${gitBranch ? ` (${gitBranch})` : ""} | ${shortId}`;
 
+    let badgeCount = 0;
     questions.forEach((question, index) => {
-      containerEl.appendChild(createQuestionCard(question, index));
+      const showBadge = question.type !== "info";
+      if (showBadge) badgeCount++;
+      containerEl.appendChild(createQuestionCard(question, index, showBadge ? badgeCount : null));
     });
 
     // Pre-populate: savedAnswers takes precedence over localStorage
@@ -2328,6 +2586,16 @@
     }
 
     initQuestionNavigation();
+
+    if (typeof mermaid !== "undefined") {
+      const isDark = document.documentElement.dataset.theme === "dark" ||
+        (!document.documentElement.dataset.theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: isDark ? "dark" : "default",
+      });
+      mermaid.run();
+    }
   }
 
   window.__INTERVIEW_API__ = {

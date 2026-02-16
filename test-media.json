@@ -1,0 +1,83 @@
+{
+  "title": "Architecture Review",
+  "description": "Review the proposed changes and provide feedback.",
+  "questions": [
+    {
+      "id": "overview",
+      "type": "info",
+      "question": "System Overview",
+      "context": "The following questions cover the proposed architecture changes for the notification system. Review each diagram and data table before selecting your preference."
+    },
+    {
+      "id": "db-choice",
+      "type": "single",
+      "question": "Which database for the event store?",
+      "media": {
+        "type": "table",
+        "table": {
+          "headers": ["", "PostgreSQL", "MongoDB", "DynamoDB"],
+          "rows": [
+            ["Transactions", "Full ACID", "Multi-doc (4.0+)", "Limited"],
+            ["Schema flexibility", "Strict", "Flexible", "Flexible"],
+            ["Horizontal scale", "Read replicas", "Sharding", "Automatic"],
+            ["Cost at 10K RPM", "~$200/mo", "~$300/mo", "~$150/mo"],
+            ["Team experience", "**Strong**", "Moderate", "None"]
+          ],
+          "highlights": [4]
+        },
+        "caption": "Comparison based on project requirements and team skills"
+      },
+      "options": ["PostgreSQL", "MongoDB", "DynamoDB"],
+      "recommended": "PostgreSQL"
+    },
+    {
+      "id": "flow",
+      "type": "single",
+      "question": "Which notification flow pattern?",
+      "media": {
+        "type": "mermaid",
+        "mermaid": "graph LR\n  A[Event] --> B{Router}\n  B -->|email| C[SES]\n  B -->|push| D[FCM]\n  B -->|sms| E[Twilio]\n  C --> F[Retry Queue]\n  D --> F\n  E --> F",
+        "caption": "Proposed fan-out pattern with retry"
+      },
+      "options": [
+        "Fan-out as shown (parallel delivery)",
+        "Sequential pipeline (one channel at a time)",
+        "User preference cascade (try preferred channel first)"
+      ]
+    },
+    {
+      "id": "perf",
+      "type": "single",
+      "question": "Where should we focus optimization?",
+      "media": {
+        "type": "chart",
+        "chart": {
+          "type": "bar",
+          "data": {
+            "labels": ["Template render", "DB lookup", "SES API", "FCM API", "Queue overhead"],
+            "datasets": [{
+              "label": "p95 latency (ms)",
+              "data": [45, 120, 380, 210, 15],
+              "backgroundColor": "rgba(129, 140, 248, 0.6)",
+              "borderColor": "#818cf8",
+              "borderWidth": 1,
+              "borderRadius": 4
+            }]
+          }
+        },
+        "caption": "Current p95 latency breakdown per notification"
+      },
+      "options": [
+        "Template caching (eliminate 45ms render)",
+        "Connection pooling for SES (reduce 380ms)",
+        "Batch FCM calls (reduce 210ms per notification)",
+        "All three"
+      ]
+    },
+    {
+      "id": "notes",
+      "type": "text",
+      "question": "Any concerns or requirements not covered above?"
+    }
+  ]
+}

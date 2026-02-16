@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Interview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Instrument+Serif&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css?session=__SESSION_TOKEN__">
   <link rel="stylesheet" href="/theme-light.css?session=__SESSION_TOKEN__" data-theme-link="light" media="(prefers-color-scheme: light)">
   <link rel="stylesheet" href="/theme-dark.css?session=__SESSION_TOKEN__" data-theme-link="dark" media="(prefers-color-scheme: dark)">
@@ -57,9 +60,8 @@
         <span class="shortcut-label">Cancel</span>
       </div>
       <div class="shortcut-divider"></div>
-      <div class="shortcut recommended-hint">
-        <span class="shortcut-keys"><span class="star">*</span></span>
-        <span class="shortcut-label">Recommended</span>
+      <div class="shortcut">
+        <span class="recommended-pill">Recommended</span>
       </div>
       <div class="shortcut hidden" data-theme-shortcut>
         <span class="shortcut-keys" data-theme-keys></span>
@@ -115,6 +117,7 @@
     <div id="save-toast" class="save-toast hidden" aria-live="polite"></div>
   </main>
 
+  <!-- __CDN_SCRIPTS__ -->
   <script>
     window.__INTERVIEW_DATA__ = /* __INTERVIEW_DATA_PLACEHOLDER__ */;
   </script>

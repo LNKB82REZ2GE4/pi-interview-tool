@@ -273,9 +273,16 @@ export default function (pi: ExtensionAPI) {
 			"exploring design tradeoffs, or when decisions have multiple dimensions worth discussing. " +
 			"Provides better UX than back-and-forth chat for structured input. " +
 			"Image responses and attachments are returned as file paths - use read tool directly to display them. " +
-			'Questions JSON format: { "title": "...", "questions": [{ "id": "q1", "type": "single|multi|text|image", "question": "...", "options": ["A", "B"], "codeBlock": { "code": "...", "lang": "ts" } }] }. ' +
+			'Questions JSON format: { "title": "...", "description": "...", "questions": [{ "id": "q1", "type": "single|multi|text|image|info", "question": "...", "options": ["A", "B"], "codeBlock": { "code": "...", "lang": "ts" }, "media": { "type": "image|chart|mermaid|table|html", ... } }] }. ' +
 			"Options can be strings or objects: { label: string, code?: { code, lang?, file?, lines?, highlights? } }. " +
-			"Questions can have a codeBlock field to display code above options. Types: single (radio), multi (checkbox), text (textarea), image (file upload).",
+			"Always set recommended with context explaining your reasoning. Recommended options show a 'Recommended' badge and are pre-selected for the user. " +
+			'Use conviction: "slight" when unsure (does NOT pre-select), conviction: "strong" when very confident (shows Recommended badge). ' +
+			"Omit conviction for normal recommendations (pre-selects). " +
+			'Use weight: "critical" for key decisions (visually prominent), weight: "minor" for low-stakes questions (compact card). ' +
+			"When questions have recommendations, set description to guide review (e.g., 'Review my suggestions and adjust as needed'). " +
+			"Questions can have a codeBlock field to display code above options. Types: single (radio), multi (checkbox), text (textarea), image (file upload), info (non-interactive). " +
+			'Media blocks: { type: "image", src, alt, caption }, { type: "table", table: { headers, rows, highlights }, caption }, { type: "chart", chart: { type, data, options }, caption }, { type: "mermaid", mermaid: "graph LR\\n..." }, { type: "html", html }. ' +
+			"Info type is a non-interactive content panel for displaying context with media. Media position: above (default), below, side (two-column).",
 		parameters: InterviewParams,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {

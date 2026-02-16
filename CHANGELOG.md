@@ -2,6 +2,51 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-02-15
+
+### Added
+- Schema validation unit tests (`schema.test.ts`) covering all validation rules, field types, media blocks, conviction/weight semantics, codeBlock validation, and edge cases.
+
+### Fixed
+- Saved HTML snapshots now copy local media images to the `images/` subfolder and rewrite `src` paths. Previously, `media: { type: "image", src: "/local/path.png" }` embedded the absolute path, which broke when the server wasn't running.
+- `copyMediaImages` now resolves relative paths against the server's explicit `cwd`, not `process.cwd()`, matching the `/media` route's path resolution.
+- Badge rendering uses `badgeNumber !== null` instead of a truthiness check that would silently skip badge 0 if numbering were ever changed to 0-indexed.
+- `loadProgress` fresh-load branch now matches `createQuestionCard`'s pre-selection logic exactly (`recs.length > 0` instead of `q.recommended` truthiness, which incorrectly passed for empty arrays).
+
+## [0.5.0] - 2026-02-15
+
+### Added
+- **Visual redesign**: New typography system with Google Fonts (Outfit, Space Mono, Instrument Serif, JetBrains Mono). Granular CSS variables for font sizes, card spacing, and a 6-color question palette (`--q-color-1` through `--q-color-6`). Each question card gets a colored left border, numbered badge, and staggered fadeUp entrance animation with `prefers-reduced-motion` support. Radial gradient background atmosphere. Container widened to 740px.
+- **Rich media content**: New `MediaBlock` type supporting image, chart (Chart.js), mermaid diagram, table, and HTML content in questions. Optional caption, position (`above`, `below`, `side` two-column grid), and maxHeight. CDN scripts for Chart.js and Mermaid injected only when needed.
+- **Info question type**: Non-interactive content panel for displaying context alongside media. Visually distinct from questions: uniform neutral border, no shadow, muted title. Skipped during keyboard navigation; excluded from responses and persistence.
+- **Conviction signals**: Optional `conviction` field on questions with `recommended`. All recommended options show a "Recommended" pill badge. `conviction: "slight"` opts out of pre-selection; `"strong"` and default (omitted) pre-select.
+- **Question weight**: Optional `weight` field. `"critical"` renders a prominent card (5px accent border, tinted background). `"minor"` renders a compact card (smaller padding, text, and gaps; no shadow).
+- **Pre-selection**: Recommended options are pre-checked on load unless `conviction: "slight"`. Saved state and savedAnswers override pre-selection.
+- **Media serving**: `/media` GET route serves local images with path security (resolve normalization, directory-boundary checks against cwd/homedir/tmpdir).
+- **Saved HTML**: Media blocks, context text, info panels, conviction indicators, and weight styling all render in saved interview HTML snapshots.
+- `test-media.json` and `test-taste.json` fixtures for testing.
+
+### Changed
+- Replaced `--font-ui` with explicit `--font-body` or `--font-mono` references throughout CSS.
+- Tufte themes now use Instrument Serif + JetBrains Mono instead of Cormorant Garamond + IBM Plex Mono.
+- All four theme files updated with per-theme `--q-color-*` palettes.
+- Option items have visible borders and accent-colored focus rings instead of background-only hover.
+- Active card styling uses box-shadow lift instead of gradient tint + border color.
+- Responsive breakpoint changed from 720px to 768px.
+- `focusQuestion()` returns boolean to signal whether a valid card was found.
+- Badge numbering skips info panels (not questions) with a separate counter (no gaps).
+- Tool description updated with conviction, weight, and pre-filled form guidance.
+
+### Fixed
+- **Paste not working in text inputs**: Clipboard data with both text and image representations (common when copying from web pages) caused `handlePaste` to intercept the image and swallow the text. Text inputs now let native paste through when clipboard has text data.
+- Paste handler `isTextInput` check narrowed to `textarea` and `input[type="text"]` only — radio, checkbox, and file inputs no longer falsely trigger the text-paste early return.
+- Responsive bottom padding removed at 768px and 480px breakpoints where shortcuts bar is hidden.
+- Path traversal in `/media` route: absolute paths with `..` segments bypassed `startsWith` check. Fixed with `resolve()` normalization.
+- Prefix collision in `/media` route: `/Users/nick` matched `/Users/nick2/secrets`. Fixed with `dir + "/"` boundary check.
+- HTTP/HTTPS/data URI images no longer proxied through `/media` endpoint (caused silent 404s).
+- Saved HTML now includes `context` text for regular questions (was only rendered for info panels).
+- `loadProgress` fresh-load branch (enabling Done buttons for pre-selected multi questions) was unreachable when `localStorage.getItem` throws. Restructured with a `loaded` flag so the branch runs outside the try/catch.
+
 ## [0.4.5] - 2026-02-01
 
 ### Fixed

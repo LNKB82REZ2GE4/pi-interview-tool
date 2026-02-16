@@ -14,14 +14,38 @@ export interface RichOption {
 
 export type OptionValue = string | RichOption;
 
+export interface MediaBlock {
+	type: "image" | "chart" | "mermaid" | "table" | "html";
+	src?: string;
+	alt?: string;
+	chart?: {
+		type: string;
+		data: Record<string, unknown>;
+		options?: Record<string, unknown>;
+	};
+	mermaid?: string;
+	table?: {
+		headers: string[];
+		rows: string[][];
+		highlights?: number[];
+	};
+	html?: string;
+	caption?: string;
+	position?: "above" | "below" | "side";
+	maxHeight?: string;
+}
+
 export interface Question {
 	id: string;
-	type: "single" | "multi" | "text" | "image";
+	type: "single" | "multi" | "text" | "image" | "info";
 	question: string;
 	options?: OptionValue[];
 	recommended?: string | string[];
+	conviction?: "strong" | "slight";
+	weight?: "critical" | "minor";
 	context?: string;
 	codeBlock?: CodeBlock;
+	media?: MediaBlock | MediaBlock[];
 }
 
 export interface QuestionsFile {
@@ -38,6 +62,60 @@ export function isRichOption(option: OptionValue): option is RichOption {
 	return typeof option === "object" && option !== null && "label" in option;
 }
 
+function validateMediaBlock(block: unknown, context: string): MediaBlock {
+	if (!block || typeof block !== "object") {
+		throw new Error(`${context}: media must be an object`);
+	}
+	const b = block as Record<string, unknown>;
+	const validMediaTypes = ["image", "chart", "mermaid", "table", "html"];
+	if (typeof b.type !== "string" || !validMediaTypes.includes(b.type)) {
+		throw new Error(`${context}: media.type must be one of: ${validMediaTypes.join(", ")}`);
+	}
+
+	if (b.type === "image" && typeof b.src !== "string") {
+		throw new Error(`${context}: media.src required for image type`);
+	}
+	if (b.type === "chart") {
+		if (!b.chart || typeof b.chart !== "object") {
+			throw new Error(`${context}: media.chart required for chart type`);
+		}
+		const chart = b.chart as Record<string, unknown>;
+		if (typeof chart.type !== "string") {
+			throw new Error(`${context}: media.chart.type must be a string`);
+		}
+		if (!chart.data || typeof chart.data !== "object") {
+			throw new Error(`${context}: media.chart.data must be an object`);
+		}
+	}
+	if (b.type === "mermaid" && typeof b.mermaid !== "string") {
+		throw new Error(`${context}: media.mermaid required for mermaid type`);
+	}
+	if (b.type === "table") {
+		if (!b.table || typeof b.table !== "object") {
+			throw new Error(`${context}: media.table required for table type`);
+		}
+		const table = b.table as Record<string, unknown>;
+		if (!Array.isArray(table.headers)) {
+			throw new Error(`${context}: media.table.headers must be an array`);
+		}
+		if (!Array.isArray(table.rows)) {
+			throw new Error(`${context}: media.table.rows must be an array`);
+		}
+	}
+	if (b.type === "html" && typeof b.html !== "string") {
+		throw new Error(`${context}: media.html required for html type`);
+	}
+
+	if (b.position !== undefined) {
+		const validPositions = ["above", "below", "side"];
+		if (!validPositions.includes(b.position as string)) {
+			throw new Error(`${context}: media.position must be one of: ${validPositions.join(", ")}`);
+		}
+	}
+
+	return b as unknown as MediaBlock;
+}
+
 const SCHEMA_EXAMPLE = `Expected format:
 {
   "title": "Optional Title",
@@ -48,7 +126,7 @@ const SCHEMA_EXAMPLE = `Expected format:
     { "id": "q4", "type": "image", "question": "Upload?" }
   ]
 }
-Valid types: single, multi, text, image
+Valid types: single, multi, text, image, info
 Options: array of strings or objects with { label, code? }`;
 
 function validateCodeBlock(block: unknown, context: string): CodeBlock {
@@ -133,7 +211,7 @@ function validateBasicStructure(data: unknown): QuestionsFile {
 		);
 	}
 	
-	const validTypes = ["single", "multi", "text", "image"];
+	const validTypes = ["single", "multi", "text", "image", "info"];
 	for (let i = 0; i < obj.questions.length; i++) {
 		const q = obj.questions[i] as Record<string, unknown>;
 		if (!q || typeof q !== "object") {
@@ -173,6 +251,27 @@ function validateBasicStructure(data: unknown): QuestionsFile {
 		if (q.codeBlock !== undefined) {
 			validateCodeBlock(q.codeBlock, `Question "${q.id}"`);
 		}
+
+		if (q.conviction !== undefined) {
+			const validConvictions = ["strong", "slight"];
+			if (typeof q.conviction !== "string" || !validConvictions.includes(q.conviction)) {
+				throw new Error(`Question "${q.id}": conviction must be "strong" or "slight"`);
+			}
+		}
+
+		if (q.weight !== undefined) {
+			const validWeights = ["critical", "minor"];
+			if (typeof q.weight !== "string" || !validWeights.includes(q.weight)) {
+				throw new Error(`Question "${q.id}": weight must be "critical" or "minor"`);
+			}
+		}
+
+		if (q.media !== undefined) {
+			const mediaItems = Array.isArray(q.media) ? q.media : [q.media];
+			for (let m = 0; m < mediaItems.length; m++) {
+				validateMediaBlock(mediaItems[m], `Question "${q.id}" media[${m}]`);
+			}
+		}
 	}
 	
 	return obj as unknown as QuestionsFile;
@@ -194,14 +293,18 @@ export function validateQuestions(data: unknown): QuestionsFile {
 			if (!q.options || q.options.length === 0) {
 				throw new Error(`Question "${q.id}": options required for type "${q.type}"`);
 			}
-		} else if (q.type === "text" || q.type === "image") {
+		} else if (q.type === "text" || q.type === "image" || q.type === "info") {
 			if (q.options) {
 				throw new Error(`Question "${q.id}": options not allowed for type "${q.type}"`);
 			}
 		}
 
+		if (q.conviction !== undefined && q.recommended === undefined) {
+			throw new Error(`Question "${q.id}": conviction requires recommended`);
+		}
+
 		if (q.recommended !== undefined) {
-			if (q.type === "text" || q.type === "image") {
+			if (q.type === "text" || q.type === "image" || q.type === "info") {
 				throw new Error(`Question "${q.id}": recommended not allowed for type "${q.type}"`);
 			}
 

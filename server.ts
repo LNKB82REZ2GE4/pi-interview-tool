@@ -1,12 +1,12 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { tmpdir, homedir } from "node:os";
-import { join, dirname, basename } from "node:path";
+import { join, dirname, basename, resolve } from "node:path";
 import { readFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, renameSync, writeFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, copyFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import type { Question, QuestionsFile } from "./schema.js";
+import type { Question, QuestionsFile, MediaBlock } from "./schema.js";
 
 function getGitBranch(cwd: string): string | null {
 	try {
@@ -400,15 +400,131 @@ function escapeHtml(str: string): string {
 		.replace(/"/g, "&quot;");
 }
 
+function renderMediaCaptionHtml(media: MediaBlock): string {
+	if (!media.caption) return "";
+	return `<div class="media-caption">${escapeHtml(media.caption)}</div>`;
+}
+
+function renderMediaBlockHtml(media: MediaBlock): string {
+	const caption = renderMediaCaptionHtml(media);
+
+	switch (media.type) {
+		case "image":
+			return `<figure class="media-block media-image">
+				<img src="${escapeHtml(media.src || "")}" alt="${escapeHtml(media.alt || "")}">
+				${caption}</figure>`;
+		case "table": {
+			if (!media.table) return "";
+			const highlights = new Set(media.table.highlights || []);
+			const headers = media.table.headers.map(h => `<th>${escapeHtml(h)}</th>`).join("");
+			const rows = media.table.rows.map((row, i) => {
+				const cls = highlights.has(i) ? ' class="highlighted-row"' : "";
+				const cells = row.map(c => `<td>${escapeHtml(c)}</td>`).join("");
+				return `<tr${cls}>${cells}</tr>`;
+			}).join("\n");
+			return `<div class="media-block media-table"><div class="media-table-scroll">
+				<table class="data-table"><thead><tr>${headers}</tr></thead>
+				<tbody>${rows}</tbody></table></div>${caption}</div>`;
+		}
+		case "mermaid":
+			return `<div class="media-block media-mermaid">
+				<pre class="mermaid">${escapeHtml(media.mermaid || "")}</pre>${caption}</div>`;
+		case "chart":
+			return `<div class="media-block media-chart">
+				<div class="media-chart-static">[Chart: ${escapeHtml(media.chart?.type || "unknown")}]</div>
+				${caption}</div>`;
+		case "html":
+			return `<div class="media-block media-html">${media.html || ""}${caption}</div>`;
+		default:
+			return "";
+	}
+}
+
+function renderMediaListHtml(media: MediaBlock | MediaBlock[] | undefined): string {
+	if (!media) return "";
+	const list = Array.isArray(media) ? media : [media];
+	return list.map(renderMediaBlockHtml).join("\n");
+}
+
+function recommendedIndicatorHtml(q: Question): string {
+	if (!q.recommended) return "";
+	return '<span class="recommended-pill">Recommended</span>';
+}
+
+function savedAnswerItemHtml(text: string, q: Question): string {
+	const recs = Array.isArray(q.recommended)
+		? q.recommended
+		: q.recommended ? [q.recommended] : [];
+	const indicator = recs.includes(text) ? " " + recommendedIndicatorHtml(q) : "";
+	return escapeHtml(text) + indicator;
+}
+
+function weightClasses(q: Question): string {
+	const classes = ["saved-question"];
+	if (q.type === "info") classes.push("info-panel");
+	if (q.weight === "critical") classes.push("weight-critical");
+	if (q.weight === "minor") classes.push("weight-minor");
+	return classes.join(" ");
+}
+
+async function copyMediaImages(questionsList: Question[], imagesDir: string, cwd: string): Promise<Question[]> {
+	const toCopy: Array<{ src: string; dest: string }> = [];
+	const rewritten = questionsList.map(q => {
+		if (!q.media) return q;
+		const mediaList = Array.isArray(q.media) ? q.media : [q.media];
+		let changed = false;
+		const newMedia = mediaList.map(m => {
+			if (m.type !== "image" || !m.src) return m;
+			if (m.src.startsWith("http://") || m.src.startsWith("https://") || m.src.startsWith("data:")) return m;
+			const resolved = resolve(
+				m.src.startsWith("~") ? join(homedir(), m.src.slice(1))
+					: m.src.startsWith("/") ? m.src
+					: join(cwd, m.src)
+			);
+			if (!existsSync(resolved)) return m;
+			const filename = basename(resolved);
+			toCopy.push({ src: resolved, dest: join(imagesDir, filename) });
+			changed = true;
+			return { ...m, src: "images/" + filename };
+		});
+		if (!changed) return q;
+		return { ...q, media: Array.isArray(q.media) ? newMedia : newMedia[0] };
+	});
+	if (toCopy.length > 0) {
+		await mkdir(imagesDir, { recursive: true });
+		await Promise.all(toCopy.map(f => copyFile(f.src, f.dest)));
+	}
+	return rewritten;
+}
+
 function renderQuestionsHtml(questionsList: Question[], answers: ResponseItem[]): string {
 	const answerMap = new Map(answers.map((a) => [a.id, a]));
+	let questionNum = 0;
 	return questionsList
-		.map((q, i) => {
+		.map((q) => {
+			const showNumber = q.type !== "info";
+			if (showNumber) questionNum++;
+			const numPrefix = showNumber ? `${questionNum}. ` : "";
+			const mediaHtml = renderMediaListHtml(q.media);
+
+			if (q.type === "info") {
+				const codeHtml = q.codeBlock
+					? `<pre class="saved-code"><code>${escapeHtml(q.codeBlock.code)}</code></pre>`
+					: "";
+				return `
+      <div class="${weightClasses(q)}">
+        <h2>${escapeHtml(q.question)}</h2>
+        ${q.context ? `<p class="question-context">${escapeHtml(q.context)}</p>` : ""}
+        ${codeHtml}
+        ${mediaHtml}
+      </div>
+    `;
+			}
+
 			const ans = answerMap.get(q.id);
 			const value = ans?.value;
 			const attachments = ans?.attachments ?? [];
 
-			// Format answer based on question type
 			let answerHtml: string;
 			if (!value || (Array.isArray(value) && value.length === 0)) {
 				answerHtml = '<div class="saved-answer empty">(no answer)</div>';
@@ -420,18 +536,16 @@ function renderQuestionsHtml(questionsList: Question[], answers: ResponseItem[])
 			} else if (q.type === "multi") {
 				const items = Array.isArray(value) ? value : [value];
 				answerHtml = `<div class="saved-answer"><ul>${items
-					.map((v) => `<li>${escapeHtml(String(v))}</li>`)
+					.map((v) => `<li>${savedAnswerItemHtml(String(v), q)}</li>`)
 					.join("")}</ul></div>`;
 			} else {
-				answerHtml = `<div class="saved-answer">${escapeHtml(String(value))}</div>`;
+				answerHtml = `<div class="saved-answer">${savedAnswerItemHtml(String(value), q)}</div>`;
 			}
 
-			// Render code block if present
 			const codeHtml = q.codeBlock
 				? `<pre class="saved-code"><code>${escapeHtml(q.codeBlock.code)}</code></pre>`
 				: "";
 
-			// Render attachments if any
 			const attachHtml =
 				attachments.length > 0
 					? `<div class="saved-attachments">${attachments
@@ -439,10 +553,16 @@ function renderQuestionsHtml(questionsList: Question[], answers: ResponseItem[])
 							.join("")}</div>`
 					: "";
 
+			const contextHtml = q.context
+				? `<p class="question-context">${escapeHtml(q.context)}</p>`
+				: "";
+
 			return `
-      <div class="saved-question">
-        <h2>${i + 1}. ${escapeHtml(q.question)}</h2>
+      <div class="${weightClasses(q)}">
+        <h2>${numPrefix}${escapeHtml(q.question)}</h2>
+        ${contextHtml}
         ${codeHtml}
+        ${mediaHtml}
         ${answerHtml}
         ${attachHtml}
       </div>
@@ -533,6 +653,32 @@ const SAVED_VIEW_STYLES = `
   border-radius: var(--radius);
   border: 1px solid var(--border-muted);
 }
+.saved-question.info-panel h2 {
+  color: var(--fg-muted);
+}
+.saved-question.weight-critical {
+  border-left: 5px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-elevated));
+}
+.saved-question.weight-minor {
+  padding: 12px;
+}
+.saved-question.weight-minor h2 {
+  font-size: 13px;
+}
+.recommended-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  margin-left: 6px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
 `;
 
 function generateSavedHtml(options: {
@@ -604,6 +750,26 @@ export async function startInterviewServer(
 	const questionById = new Map<string, Question>();
 	for (const question of questions.questions) {
 		questionById.set(question.id, question);
+	}
+
+	function getMediaList(q: Question): MediaBlock[] {
+		if (!q.media) return [];
+		return Array.isArray(q.media) ? q.media : [q.media];
+	}
+
+	const needsChartJs = questions.questions.some(q =>
+		getMediaList(q).some(m => m.type === "chart")
+	);
+	const needsMermaid = questions.questions.some(q =>
+		getMediaList(q).some(m => m.type === "mermaid")
+	);
+
+	let cdnScripts = "";
+	if (needsChartJs) {
+		cdnScripts += '<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>\n';
+	}
+	if (needsMermaid) {
+		cdnScripts += '<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>\n';
 	}
 
 	const themeConfig = options.theme ?? {};
@@ -694,6 +860,7 @@ export async function startInterviewServer(
 					autoSaveOnSubmit: options.autoSaveOnSubmit ?? true,
 				});
 				const html = TEMPLATE
+					.replace("<!-- __CDN_SCRIPTS__ -->", cdnScripts)
 					.replace("/* __INTERVIEW_DATA_PLACEHOLDER__ */", inlineData)
 					.replace(/__SESSION_TOKEN__/g, sessionToken);
 				res.writeHead(200, {
@@ -757,6 +924,56 @@ export async function startInterviewServer(
 					"Cache-Control": "no-store",
 				});
 				res.end(SCRIPT);
+				return;
+			}
+
+			if (method === "GET" && url.pathname === "/media") {
+				if (!validateTokenQuery(url, sessionToken, res)) return;
+				const filePath = url.searchParams.get("path");
+				if (!filePath) {
+					sendText(res, 400, "Missing path parameter");
+					return;
+				}
+
+				const home = homedir();
+				const resolved = resolve(
+					filePath.startsWith("~")
+						? join(home, filePath.slice(1))
+						: filePath.startsWith("/")
+							? filePath
+							: join(cwd, filePath)
+				);
+
+				const allowed = [cwd, home, tmpdir()];
+				const isAllowed = allowed.some(dir => resolved === dir || resolved.startsWith(dir + "/"));
+				if (!isAllowed) {
+					sendText(res, 403, "Path not allowed");
+					return;
+				}
+
+				if (!existsSync(resolved)) {
+					sendText(res, 404, "File not found");
+					return;
+				}
+
+				const ext = resolved.split(".").pop()?.toLowerCase();
+				const mimeTypes: Record<string, string> = {
+					png: "image/png",
+					jpg: "image/jpeg",
+					jpeg: "image/jpeg",
+					gif: "image/gif",
+					webp: "image/webp",
+					svg: "image/svg+xml",
+				};
+
+				const contentType = mimeTypes[ext || ""] || "application/octet-stream";
+				const data = readFileSync(resolved);
+				res.writeHead(200, {
+					"Content-Type": contentType,
+					"Cache-Control": "private, max-age=300",
+					"Content-Length": data.length,
+				});
+				res.end(data);
 				return;
 			}
 
@@ -1023,6 +1240,15 @@ export async function startInterviewServer(
 					}
 				}
 
+				// Copy local media images to snapshot and rewrite paths
+				const rewrittenQuestions = await copyMediaImages(
+					questions.questions, imagesPath, cwd
+				);
+				const snapshotQuestions: QuestionsFile = {
+					...questions,
+					questions: rewrittenQuestions,
+				};
+
 				// Generate HTML with embedded data
 				const meta: SavedInterviewMeta = {
 					savedAt: new Date().toISOString(),
@@ -1031,7 +1257,7 @@ export async function startInterviewServer(
 				};
 				const themeCss = themeMode === "light" ? themeLightCss : themeDarkCss;
 				const html = generateSavedHtml({
-					questions,
+					questions: snapshotQuestions,
 					answers: savedResponses,
 					meta,
 					baseStyles: STYLES,
