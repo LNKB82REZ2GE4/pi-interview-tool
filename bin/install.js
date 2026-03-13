@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
-const EXTENSION_NAME = "interview";
+const EXTENSION_NAME = "interview-glimpse";
 const TARGET_DIR = path.join(os.homedir(), ".pi", "agent", "extensions", EXTENSION_NAME);
 const SOURCE_DIR = path.join(__dirname, "..");
 
@@ -53,7 +53,7 @@ function getVersion() {
 
 function main() {
   const version = getVersion();
-  console.log(`\npi-interview v${version}`);
+  console.log(`\npi-interview-glimpse v${version}`);
   console.log("Installing to:", TARGET_DIR);
   console.log("");
 

@@ -1,12 +1,12 @@
 {
-  "name": "pi-interview",
-  "version": "0.5.1",
-  "description": "Interactive interview form extension for pi coding agent",
-  "author": "Nico Bailon",
+  "name": "pi-interview-glimpse",
+  "version": "0.1.0",
+  "description": "Interactive interview form for pi coding agent — native macOS window via Glimpse",
+  "author": "Lakshya Agarwal",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nicobailon/pi-interview-tool.git"
+    "url": "git+https://github.com/lakshyaag/pi-interview-glimpse.git"
   },
   "keywords": [
     "pi",
@@ -15,10 +15,16 @@
     "interview",
     "form",
     "extension",
-    "cli"
+    "cli",
+    "glimpse",
+    "macos",
+    "native"
+  ],
+  "os": [
+    "darwin"
   ],
   "bin": {
-    "pi-interview": "bin/install.js"
+    "pi-interview-glimpse": "bin/install.js"
   },
   "files": [
     "bin/",
@@ -36,6 +42,9 @@
     "extensions": [
       "./index.ts"
     ]
+  },
+  "dependencies": {
+    "glimpseui": "^0.3.7"
   },
   "devDependencies": {
     "vitest": "^4.0.18"
