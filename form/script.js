@@ -60,6 +60,14 @@
     heartbeat: null,
     queuePoll: null,
   };
+  function closeWindow() {
+    if (window.glimpse && typeof window.glimpse.close === "function") {
+      window.glimpse.close();
+    } else {
+      window.close();
+    }
+  }
+
   let filePickerOpen = false;
   const CLOSE_DELAY = 10;
   const RING_CIRCUMFERENCE = 100.53;
@@ -162,7 +170,7 @@
       
       if (closeIn <= 0) {
         clearInterval(timers.countdown);
-        cancelInterview("timeout").finally(() => window.close());
+        cancelInterview("timeout").finally(() => closeWindow());
       }
     }, 1000);
   }
@@ -1197,7 +1205,7 @@
     if (event.key === 'Escape') {
       if (!expiredOverlay.classList.contains('hidden')) {
         if (timers.countdown) clearInterval(timers.countdown);
-        cancelInterview("user").finally(() => window.close());
+        cancelInterview("user").finally(() => closeWindow());
         return;
       }
       showSessionExpired();
@@ -2421,7 +2429,7 @@
       session.ended = true;
       successOverlay.classList.remove("hidden");
       setTimeout(() => {
-        window.close();
+        closeWindow();
       }, 800);
     } catch (err) {
       if (isNetworkError(err)) {
@@ -2506,7 +2514,10 @@
         if (!url) return;
         const selectedOption = queueSessionSelect.options[queueSessionSelect.selectedIndex];
         if (selectedOption?.disabled) return;
-        window.open(url, "_blank", "noopener");
+        const opened = window.open(url, "_blank", "noopener");
+        if (!opened) {
+          window.location.href = url;
+        }
       });
     }
     window.addEventListener("pagehide", (event) => {
@@ -2539,7 +2550,7 @@
     closeTabBtn.addEventListener("click", async () => {
       if (timers.countdown) clearInterval(timers.countdown);
       await cancelInterview("user");
-      window.close();
+      closeWindow();
     });
 
     stayBtn.addEventListener("click", () => {

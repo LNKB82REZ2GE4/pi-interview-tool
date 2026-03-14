@@ -6,19 +6,71 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import { execSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { execSync, execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { startInterviewServer, getActiveSessions, type ResponseItem } from "./server.js";
 import { validateQuestions, type QuestionsFile } from "./schema.js";
 import { loadSettings, type InterviewThemeSettings } from "./settings.js";
 
-// Glimpse — native macOS WKWebView window
-// Resolve the absolute path to glimpseui's entry point from this package's node_modules.
-// The bare "glimpseui" specifier can fail when jiti loads extensions from unexpected locations,
-// so we resolve the path relative to this file to guarantee it works.
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const glimpsePath = path.join(__dirname, "node_modules", "glimpseui", "src", "glimpse.mjs");
-const { open: glimpseOpen } = await import(glimpsePath);
+interface GlimpseWindow {
+	on(event: "closed", handler: () => void): void;
+	close(): void;
+}
+
+let glimpseOpen: ((html: string, opts: Record<string, unknown>) => GlimpseWindow) | null | undefined;
+
+function findGlimpseMjs(): string | null {
+	// Local node_modules
+	try {
+		const req = createRequire(import.meta.url);
+		return req.resolve("glimpseui");
+	} catch {}
+	// Global npm install
+	try {
+		const globalRoot = execFileSync("npm", ["root", "-g"], { encoding: "utf-8" }).trim();
+		const entry = path.join(globalRoot, "glimpseui", "src", "glimpse.mjs");
+		if (fs.existsSync(entry)) return entry;
+	} catch {}
+	return null;
+}
+
+async function getGlimpseOpen() {
+	if (glimpseOpen !== undefined) return glimpseOpen;
+	const resolved = findGlimpseMjs();
+	if (resolved) {
+		try {
+			glimpseOpen = (await import(resolved)).open;
+			return glimpseOpen;
+		} catch {}
+	}
+	glimpseOpen = null;
+	return glimpseOpen;
+}
+
+function escapeHtml(str: string): string {
+	return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function openInGlimpse(
+	open: (html: string, opts: Record<string, unknown>) => GlimpseWindow,
+	url: string,
+	title?: string,
+): GlimpseWindow {
+	const safeTitle = escapeHtml(title || "Interview");
+	const shellHTML = `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>${safeTitle}</title></head>
+<body style="margin:0; background:#1a1a2e;">
+  <script>window.location.replace(${JSON.stringify(url)});</script>
+</body>
+</html>`;
+
+	return open(shellHTML, {
+		width: 800,
+		height: 700,
+		title: title || "Interview",
+	});
+}
 
 function formatTimeAgo(timestamp: number): string {
 	const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -30,26 +82,31 @@ function formatTimeAgo(timestamp: number): string {
 	return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
 }
 
-/**
- * Opens the interview form in a native Glimpse (WKWebView) window instead of a browser.
- * The Glimpse window loads a small HTML shell that redirects to the interview server URL.
- * The WKWebView can make fetch() calls to the localhost server just like a browser.
- * Returns the Glimpse window handle so it can be closed when the interview finishes.
- */
-function openInGlimpse(url: string, title?: string): any {
-	const shellHTML = `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>${title || "Interview"}</title></head>
-<body style="margin:0; background:#1a1a2e;">
-  <script>window.location.replace(${JSON.stringify(url)});</script>
-</body>
-</html>`;
-
-	return glimpseOpen(shellHTML, {
-		width: 800,
-		height: 700,
-		title: title || "Interview",
-	});
+async function openUrl(pi: ExtensionAPI, url: string, browser?: string): Promise<void> {
+	const platform = os.platform();
+	let result;
+	if (platform === "darwin") {
+		if (browser) {
+			result = await pi.exec("open", ["-a", browser, url]);
+		} else {
+			result = await pi.exec("open", [url]);
+		}
+	} else if (platform === "win32") {
+		if (browser) {
+			result = await pi.exec("cmd", ["/c", "start", "", browser, url]);
+		} else {
+			result = await pi.exec("cmd", ["/c", "start", "", url]);
+		}
+	} else {
+		if (browser) {
+			result = await pi.exec(browser, [url]);
+		} else {
+			result = await pi.exec("xdg-open", [url]);
+		}
+	}
+	if (result.code !== 0) {
+		throw new Error(result.stderr || `Failed to open browser (exit code ${result.code})`);
+	}
 }
 
 interface InterviewDetails {
@@ -127,7 +184,6 @@ function mergeThemeConfig(
 }
 
 function loadQuestions(questionsInput: string, cwd: string): SavedQuestionsFile {
-	// Detect inline JSON: starts with { (trimmed) → parse directly without file I/O
 	const trimmed = questionsInput.trimStart();
 	if (trimmed.startsWith("{")) {
 		let data: unknown;
@@ -140,11 +196,10 @@ function loadQuestions(questionsInput: string, cwd: string): SavedQuestionsFile 
 		return validateQuestions(data);
 	}
 
-	// Otherwise treat as a file path
 	const expanded = expandHome(questionsInput);
 	const absolutePath = path.isAbsolute(expanded)
 		? expanded
-		: path.join(cwd, questionsInput); // Use original if relative (no ~)
+		: path.join(cwd, questionsInput);
 
 	if (!fs.existsSync(absolutePath)) {
 		throw new Error(`Questions file not found: ${absolutePath}`);
@@ -157,7 +212,7 @@ function loadQuestions(questionsInput: string, cwd: string): SavedQuestionsFile 
 		return loadSavedInterview(content, absolutePath);
 	}
 
-	// JSON file handling
+	// Original JSON handling
 	let data: unknown;
 	try {
 		data = JSON.parse(content);
@@ -285,10 +340,10 @@ export default function (pi: ExtensionAPI) {
 		name: "interview",
 		label: "Interview",
 		description:
-			"Present an interactive form in a native macOS window (via Glimpse) to gather user responses. " +
+			"Present an interactive form to gather user responses. " +
+			"On macOS, opens in a native window (Glimpse); falls back to a browser tab elsewhere. " +
 			"Use proactively when: choosing between multiple approaches, gathering requirements before implementation, " +
 			"exploring design tradeoffs, or when decisions have multiple dimensions worth discussing. " +
-			"Opens a native WKWebView window instead of a browser tab. " +
 			"Provides better UX than back-and-forth chat for structured input. " +
 			"Image responses and attachments are returned as file paths - use read tool directly to display them. " +
 			"Pass questions as inline JSON string directly (preferred) or as a path to a JSON file. " +
@@ -314,7 +369,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (!ctx.hasUI) {
 				throw new Error(
-					"Interview tool requires interactive mode (macOS with Glimpse). " +
+					"Interview tool requires interactive mode. " +
 						"Cannot run in headless/RPC/print mode."
 				);
 			}
@@ -346,15 +401,11 @@ export default function (pi: ExtensionAPI) {
 			const sessionId = randomUUID();
 			const sessionToken = randomUUID();
 			let server: { close: () => void } | null = null;
-			let glimpseWin: any = null;
+			let glimpseWin: GlimpseWindow | null = null;
 			let resolved = false;
 			let url = "";
 
 			const cleanup = () => {
-				if (glimpseWin) {
-					try { glimpseWin.close(); } catch {}
-					glimpseWin = null;
-				}
 				if (server) {
 					server.close();
 					server = null;
@@ -401,7 +452,13 @@ export default function (pi: ExtensionAPI) {
 					});
 				};
 
-				const handleAbort = () => finish("aborted");
+				const handleAbort = () => {
+					if (glimpseWin) {
+						try { glimpseWin.close(); } catch {}
+						glimpseWin = null;
+					}
+					finish("aborted");
+				};
 				signal?.addEventListener("abort", handleAbort, { once: true });
 
 				startInterviewServer(
@@ -427,6 +484,10 @@ export default function (pi: ExtensionAPI) {
 					}
 				)
 					.then(async (handle) => {
+						if (resolved) {
+							handle.close();
+							return;
+						}
 						server = handle;
 						url = handle.url;
 
@@ -436,7 +497,7 @@ export default function (pi: ExtensionAPI) {
 						if (otherActive.length > 0) {
 							const active = otherActive[0];
 							const queuedLines = [
-								"Interview already active in browser:",
+								"Interview already active:",
 								`  Title: ${active.title}`,
 								`  Project: ${active.cwd}${active.gitBranch ? ` (${active.gitBranch})` : ""}`,
 								`  Session: ${active.id.slice(0, 8)}`,
@@ -477,16 +538,27 @@ export default function (pi: ExtensionAPI) {
 								pi.ui.notify(queuedSummary, "info");
 							}
 						} else {
-							try {
-								glimpseWin = openInGlimpse(url, questionsData.title || "Interview");
-								glimpseWin.on("closed", () => {
+							const glimpseOpenFn = os.platform() === "darwin" ? await getGlimpseOpen() : null;
+							if (glimpseOpenFn) {
+								try {
+									glimpseWin = openInGlimpse(glimpseOpenFn, url, questionsData.title || "Interview");
+									glimpseWin.on("closed", () => {
+										glimpseWin = null;
+										if (!resolved) {
+											finish("cancelled", [], "user");
+										}
+									});
+									return;
+								} catch {
 									glimpseWin = null;
-								});
+								}
+							}
+							try {
+								await openUrl(pi, url, settings.browser);
 							} catch (err) {
 								cleanup();
 								const message = err instanceof Error ? err.message : String(err);
-								reject(new Error(`Failed to open Glimpse window: ${message}`));
-								return;
+								reject(new Error(`Failed to open browser: ${message}`));
 							}
 						}
 					})

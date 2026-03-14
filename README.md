@@ -4,7 +4,7 @@
 
 # Interview Tool
 
-A custom tool for pi-agent that opens a web-based form to gather user responses to clarification questions.
+A custom tool for pi-agent that opens an interactive form to gather user responses to clarification questions. On macOS, uses [Glimpse](https://github.com/hazat/glimpse) to render in a native WKWebView window; falls back to a browser tab on other platforms.
 
 https://github.com/user-attachments/assets/52285bd9-956e-4020-aca5-9fbd82916934
 
@@ -18,6 +18,7 @@ Restart pi to load the extension.
 
 **Requirements:**
 - pi-agent v0.35.0 or later (extensions API)
+- For native macOS window: `pi install npm:glimpseui` (optional, falls back to browser if not installed)
 
 ## Features
 
@@ -43,7 +44,7 @@ Restart pi to load the extension.
 
 ```
 ┌─────────┐      ┌──────────────────────────────────────────┐      ┌─────────┐
-│  Agent  │      │              Browser Form                │      │  Agent  │
+│  Agent  │      │        Glimpse / Browser Form             │      │  Agent  │
 │ invokes ├─────►│                                          ├─────►│receives │
 │interview│      │  answer → answer → attach img → answer   │      │responses│
 └─────────┘      │     ↑                                    │      └─────────┘
@@ -52,7 +53,7 @@ Restart pi to load the extension.
 ```
 
 **Lifecycle:**
-1. Agent calls `interview()` → local server starts → browser opens form
+1. Agent calls `interview()` → local server starts → Glimpse window opens (macOS) or browser tab (elsewhere)
 2. User answers at their own pace; each change auto-saves and resets the timeout
 3. Session ends via:
    - **Submit** (`⌘+Enter`) → responses returned to agent
@@ -62,7 +63,7 @@ Restart pi to load the extension.
 
 **Timeout behavior:** The countdown (visible in corner) resets on any activity - typing, clicking, or mouse movement. When it expires, an overlay appears giving the user a chance to continue. Progress is never lost thanks to localStorage auto-save.
 
-**Multi-agent behavior:** When multiple agents run interviews simultaneously, only the first auto-opens the browser. Subsequent interviews are queued and shown as a URL in the tool output, preventing focus stealing. Active interviews also surface a top-right toast with a dropdown to open queued sessions. A session status bar at the top of each form shows the project path, git branch, and session ID for easy identification.
+**Multi-agent behavior:** When multiple agents run interviews simultaneously, only the first auto-opens the window. Subsequent interviews are queued and shown as a URL in the tool output, preventing focus stealing. Active interviews also surface a top-right toast with a dropdown to open queued sessions. A session status bar at the top of each form shows the project path, git branch, and session ID for easy identification.
 
 ## Usage
 

@@ -3,5 +3,6 @@
 test-*.json
 example-*.json
 CHANGELOG.md
+bun.lock
 .git/
 .gitignore

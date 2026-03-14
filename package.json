@@ -17,9 +17,6 @@
     "extension",
     "cli"
   ],
-  "os": [
-    "darwin"
-  ],
   "bin": {
     "pi-interview": "bin/install.js"
   },
@@ -39,9 +36,6 @@
     "extensions": [
       "./index.ts"
     ]
-  },
-  "dependencies": {
-    "glimpseui": "^0.3.7"
   },
   "devDependencies": {
     "vitest": "^4.0.18"
